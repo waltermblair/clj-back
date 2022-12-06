@@ -39,18 +39,33 @@
       (log/error "Exception: " e)
       {:status 500 :body "Unhandled Exception"})))
 
+(def ^:private cors-headers
+  "Generic CORS headers"
+  {"Access-Control-Allow-Origin"  "*"
+   "Access-Control-Allow-Headers" "*"
+   "Access-Control-Allow-Methods" "GET"})
+
+(defn- wrap-cors
+  [handler]
+  (fn [request]
+    (let [response (handler request)]
+      (update-in response [:headers] merge cors-headers))))
+
+(def routes
+  [["/health"
+    {:get {:handler (fn [_] {:status 200 :body "ok"})}}]
+   ["/api"
+    ["/1"
+     ["/marketplace"
+      {:get {:handler (wrap-cors get-marketplace-data)}}]]]])
+
 (def app
   (http/ring-handler
     (http/router
-      [["/health"
-        {:get {:handler (fn [_] {:status 200 :body "ok"})}}]
-       ["/api/"
-        ["/1/"
-         ["/marketplace"
-          {:get {:handler get-marketplace-data}}]]]])
+      routes)
     (ring/routes
       (ring/create-default-handler))
-    {:executor sieppari/executor}))
+    {:executor   sieppari/executor}))
 
 (defn start []
   (jetty/run-jetty #'app {:port 3000, :join? false, :async true})
