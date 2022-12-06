@@ -1,6 +1,7 @@
 (ns gback.core
   (:require [clj-http.client :as client]
             [clojure.java.io :as io]
+            [clojure.tools.logging :as log]
             [dk.ative.docjure.spreadsheet :as doc]
             [reitit.ring :as ring]
             [reitit.http :as http]
@@ -29,18 +30,24 @@
        (remove #(or (= "StateName" (:state %)) (nil? (:state %))))
        (map #(assoc % :enrolled-percentage (calculate-percentage %)))))
 
-(defn- get-marketplace-data
+(defn get-marketplace-data
   [_]
-  (let [state-level-data (load-state-level-data (fetch-workbook))]
-    {:status 200 :body state-level-data}))
+  (try
+    (let [state-level-data (load-state-level-data (fetch-workbook))]
+      {:status 200 :body state-level-data})
+    (catch Exception e
+      (log/error "Exception: " e)
+      {:status 500 :body "Unhandled Exception"})))
 
 (def app
   (http/ring-handler
     (http/router
-      [["/about"
+      [["/health"
         {:get {:handler (fn [_] {:status 200 :body "ok"})}}]
-       ["/marketplace"
-        {:get {:handler get-marketplace-data}}]])
+       ["/api/"
+        ["/1/"
+         ["/marketplace"
+          {:get {:handler get-marketplace-data}}]]]])
     (ring/routes
       (ring/create-default-handler))
     {:executor sieppari/executor}))
