@@ -5,12 +5,9 @@
             [reitit.ring :as ring]
             [reitit.http :as http]
             [reitit.interceptor.sieppari :as sieppari]
-            [ring.adapter.jetty :as jetty])
-  (:import (java.io ByteArrayOutputStream InputStream)))
+            [ring.adapter.jetty :as jetty]))
 
 (def ^:private WORKBOOK_URL "https://aspe.hhs.gov/sites/default/files/private/aspe-files/106941/workbook.xls")
-(def ^:private TOTAL_COLUMN_HEADER "Total Eligible to Enroll in a Marketplace Plan")
-(def ^:private ENROLLED_COLUMN_HEADER "Number of Individuals Who Have Selected a Marketplace Plan ")
 
 (defn- fetch-workbook
   "Fetch xls workbook from catalog.data.gov/dataset and loads in memory"
@@ -50,5 +47,4 @@
 
 (defn start []
   (jetty/run-jetty #'app {:port 3000, :join? false, :async true})
-  ;(aleph/start-server (aleph/wrap-ring-async-handler #'app) {:port 3000})
   (println "server running in port 3000"))
