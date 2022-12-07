@@ -2,6 +2,7 @@
   (:require [clj-http.client :as client]
             [clojure.data.json :as json]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [dk.ative.docjure.spreadsheet :as doc]
             [reitit.ring :as ring]
@@ -29,9 +30,10 @@
        (doc/select-sheet "State Level Tables From Report")
        (doc/select-columns {:B :state :E :eligible :H :enrolled})
        (remove #(or
-                  (= "SBM Subtotal" (:state %))
-                  (= "StateName" (:state %))
-                  (nil? (:state %))))
+                  (nil? (:state %))
+                  (str/includes? (str/lower-case (:state %)) "total")
+                  (= "StateName" (:state %))))
+       (map #(assoc % :state (str/trim (:state %))))
        (map #(assoc % :enrolled-percentage (calculate-percentage %)))))
 
 (defn get-marketplace-data
