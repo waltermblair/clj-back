@@ -4,14 +4,20 @@ Web server demo
 
 ## Usage
 
+```
+lein test
+```
+
+```
 docker-compose up
 lein run
+```
 
 ## Todo
 
-batch guesses
-UI styling
-refactor ns
-docs
-UI tests
-docker-compose apps too
+- batch guesses
+- UI tests
+- UI styling
+- users
+- flyway
+- docker front-end
