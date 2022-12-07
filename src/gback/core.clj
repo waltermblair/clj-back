@@ -60,7 +60,7 @@
 
 ; TODO - fold into middleware
 (def ^:private headers
-  {"Access-Control-Allow-Origin"  "http://localhost:8281"
+  {"Access-Control-Allow-Origin"  #{"http://localhost:8280" "http://localhost:8281"}
    "Access-Control-Allow-Headers" "*"
    "Access-Control-Allow-Methods" #{"GET" "POST"}
    "Content-Type" "application/json"})
