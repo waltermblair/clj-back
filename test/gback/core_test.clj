@@ -10,7 +10,7 @@
       (let [response (core/get-marketplace-data (mock/request :get "/api/1/marketplace"))]
         (is (= 200 (:status response)))
         (is (= "Marketplace Total" (-> response :body first :state)))
-        (is (= "59.20" (-> response :body first :enrolled-percentage))))))
+        (is (= 59 (-> response :body first :enrolled-percentage))))))
   (testing "Returns 500 on unhandled exception"
     (with-redefs [core/fetch-workbook (constantly (Exception. "oops"))]
       (let [response (core/get-marketplace-data (mock/request :get "/api/1/marketplace"))]

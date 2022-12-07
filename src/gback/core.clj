@@ -2,11 +2,16 @@
   (:require [clj-http.client :as client]
             [clojure.data.json :as json]
             [clojure.java.io :as io]
+            [clojure.spec.alpha :as s]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [dk.ative.docjure.spreadsheet :as doc]
+            [muuntaja.core :as m]
+            [next.jdbc :as jdbc]
+            [reitit.coercion.spec]
+            [reitit.ring.coercion :as coercion]
+            [reitit.ring.middleware.muuntaja :as muuntaja]
             [reitit.ring :as ring]
-            [reitit.http :as http]
             [reitit.interceptor.sieppari :as sieppari]
             [ring.adapter.jetty :as jetty]))
 
@@ -21,7 +26,7 @@
 
 (defn- calculate-percentage
   [{:keys [enrolled eligible]}]
-  (format "%.2f" (* 100 (float (/ enrolled eligible)))))
+  (Math/round (* 100 (float (/ enrolled eligible)))))
 
 (defn- load-state-level-data
   "Selects columns of interest from workbook"
@@ -45,12 +50,41 @@
       (log/error "Exception: " e)
       {:status 500 :body "Unhandled Exception"})))
 
+(s/def ::state string?)
+(s/def ::actual-percent-enrolled int?)
+(s/def ::guessed-percent-enrolled int?)
+(s/def ::guess
+  (s/keys :req [::state
+                ::actual-percent-enrolled
+                ::guessed-percent-enrolled]))
+
+(def ds (jdbc/get-datasource {:dbtype "mysql" :dbname "gback" :user "username" :password "password"}))
+
+(def insert-guess-query
+  "INSERT INTO Guesses(state, actual_percent_enrolled, guessed_percent_enrolled)
+  VALUES (?,?,?)")
+
+; TODO - test
+(defn post-guess
+  [guess]
+  {:pre [(s/conform ::guess guess)]}
+  (try
+    {:status 201 :body (json/write-str "ok")}
+    (let [{:keys [state actual-percent-enrolled guessed-percent-enrolled]} guess
+          result (jdbc/execute-one! ds [insert-guess-query state actual-percent-enrolled guessed-percent-enrolled])
+          _ (println "HERE BE RESULT: " result)]
+      {:status 201 :body (json/write-str result)})
+    (catch Exception e
+      (log/error "Exception: " e)
+      {:status 500 :body "Unhandled Exception"})))
+
 (def ^:private headers
   {"Access-Control-Allow-Origin"  "http://localhost:8281"
    "Access-Control-Allow-Headers" "*"
-   "Access-Control-Allow-Methods" "GET"
+   "Access-Control-Allow-Methods" #{"GET" "POST"}
    "Content-Type" "application/json"})
 
+; TODO - reitit / muuntaja
 (defn- wrap-headers
   [handler]
   (fn [request]
@@ -63,12 +97,29 @@
    ["/api"
     ["/1"
      ["/marketplace"
-      {:get {:handler (wrap-headers get-marketplace-data)}}]]]])
+      {:get {:handler (wrap-headers get-marketplace-data)}}]
+     ["/guess"
+      {:options {:handler (wrap-headers (fn [_] {:status 200}))}
+       :post {:parameters {:body {:state string? :actual-percent-enrolled int? :guessed-percent-enrolled int?}}
+              :handler (wrap-headers (fn [{:keys [body-params]}]
+                                       (post-guess body-params)))}}]]]])
+
+(def middleware
+  {;:reitit.interceptor/transform dev/print-context-diffs ;; pretty context diffs
+   ;;:validate spec/validate ;; enable spec validation for route data
+   ;;:reitit.spec/wrap spell/closed ;; strict top-level validation
+   :data {:coercion     reitit.coercion.spec/coercion
+          :muuntaja     m/instance
+          :middleware [muuntaja/format-middleware
+                       coercion/coerce-exceptions-middleware
+                       coercion/coerce-request-middleware
+                       coercion/coerce-response-middleware]}})
 
 (def app
-  (http/ring-handler
-    (http/router
-      routes)
+  (ring/ring-handler
+    (ring/router
+      routes
+      middleware)
     (ring/routes
       (ring/create-default-handler))
     {:executor   sieppari/executor}))
