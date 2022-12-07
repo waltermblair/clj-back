@@ -58,7 +58,7 @@
         {:status 500 :body "Unhandled Exception"}))
     {:status 400 :body "Bad Request Body"}))
 
-; TODO - middleware
+; TODO - fold into middleware
 (def ^:private headers
   {"Access-Control-Allow-Origin"  "http://localhost:8281"
    "Access-Control-Allow-Headers" "*"
