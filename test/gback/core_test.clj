@@ -23,15 +23,17 @@
         (is (= "Unhandled Exception" (:body response)))))))
 
 (deftest handle-post-test
-  (let [request-body {:state "SC" :guessed-percent-enrolled 95 :actual-percent-enrolled 50}
-        request (mock/request :post "/api/v1/guess" request-body)]
+  (let [request-body {:state "SC" :guessed-percent-enrolled 95 :actual-percent-enrolled 50}]
     (testing "Returns 201 with data"
       (with-stub [[db/post-guess (constantly {:average_difference 50})]]
-        (let [response (core/handle-post-guess request)]
+        (let [response (core/handle-post-guess request-body)]
           (is (= 201 (:status response)))
           (is (= 50 (-> response :body (json/read-str :key-fn keyword) :average_difference))))
         (is (= 1 (-> db/post-guess bond/calls count)))))
+    (testing "Returns 400 on bad request"
+      (let [response (core/handle-post-guess (dissoc request-body :state))]
+        (is (= 400 (:status response)))))
     (testing "Returns 500 on DB error"
       (with-redefs [db/post-guess (fn [_] (throw (Exception. "oops")))]
-        (let [response (core/handle-post-guess request)]
+        (let [response (core/handle-post-guess request-body)]
           (is (= 500 (:status response))))))))

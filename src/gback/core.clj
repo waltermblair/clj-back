@@ -42,22 +42,23 @@
 (s/def ::actual-percent-enrolled int?)
 (s/def ::guessed-percent-enrolled int?)
 (s/def ::guess
-  (s/keys :req [::state
-                ::actual-percent-enrolled
-                ::guessed-percent-enrolled]))
+  (s/keys :req-un [::state
+                   ::actual-percent-enrolled
+                   ::guessed-percent-enrolled]))
 
 (defn handle-post-guess
   "Insert guess and return stats for related guesses"
   [guess]
-  {:pre [(s/conform ::guess guess)]}
-  (try
-    (let [results (db/post-guess guess)]
-      {:status 201 :body (json/write-str results)})
-    (catch Exception e
-      (log/error "Exception: " e)
-      {:status 500 :body "Unhandled Exception"})))
+  (if (s/valid? ::guess guess)
+    (try
+      (let [results (db/post-guess guess)]
+        {:status 201 :body (json/write-str results)})
+      (catch Exception e
+        (log/error "Exception: " e)
+        {:status 500 :body "Unhandled Exception"}))
+    {:status 400 :body "Bad Request Body"}))
 
-; TODO - fold into middleware
+; TODO - middleware
 (def ^:private headers
   {"Access-Control-Allow-Origin"  "http://localhost:8281"
    "Access-Control-Allow-Headers" "*"
