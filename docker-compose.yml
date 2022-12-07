@@ -5,6 +5,17 @@ networks:
     driver: bridge
 
 services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    networks:
+      - gback
+    depends_on:
+      - mysql
+    environment:
+      DB_HOST: mysql
+
   mysql:
     image: mysql
     container_name: mysql
