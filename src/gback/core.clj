@@ -1,29 +1,17 @@
 (ns gback.core
-  (:require [clj-http.client :as client]
-            [clojure.data.json :as json]
-            [clojure.java.io :as io]
+  (:require [clojure.data.json :as json]
             [clojure.spec.alpha :as s]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [dk.ative.docjure.spreadsheet :as doc]
+            [gback.services.db :as db]
+            [gback.services.healthcare :as health]
             [muuntaja.core :as m]
-            [next.jdbc :as jdbc]
-            [next.jdbc.result-set :as rs]
             [reitit.coercion.spec]
             [reitit.ring.coercion :as coercion]
             [reitit.ring.middleware.muuntaja :as muuntaja]
             [reitit.ring :as ring]
             [reitit.interceptor.sieppari :as sieppari]
             [ring.adapter.jetty :as jetty]))
-
-(def ^:private WORKBOOK_URL "https://aspe.hhs.gov/sites/default/files/private/aspe-files/106941/workbook.xls")
-
-(defn- fetch-workbook
-  "Fetch xls workbook from catalog.data.gov/dataset and loads in memory"
-  []
-  (let [response (client/get WORKBOOK_URL {:as :byte-array :throw-exceptions false})]
-    (with-open [xin (io/input-stream (:body response))]
-      (doc/load-workbook xin))))
 
 (defn- calculate-percentage
   [{:keys [enrolled eligible]}]
@@ -33,19 +21,18 @@
   "Selects columns of interest from workbook"
   [workbook]
   (->> workbook
-       (doc/select-sheet "State Level Tables From Report")
-       (doc/select-columns {:B :state :E :eligible :H :enrolled})
+       health/select-data
        (remove #(or
-                  (nil? (:state %))
-                  (str/includes? (str/lower-case (:state %)) "total")
-                  (= "StateName" (:state %))))
+                 (nil? (:state %))
+                 (str/includes? (str/lower-case (:state %)) "total")
+                 (= "StateName" (:state %))))
        (map #(assoc % :state (str/trim (:state %))))
        (map #(assoc % :enrolled-percentage (calculate-percentage %)))))
 
-(defn get-marketplace-data
+(defn handle-get-marketplace-data
   [_]
   (try
-    (let [state-level-data (load-state-level-data (fetch-workbook))]
+    (let [state-level-data (load-state-level-data (health/fetch-workbook))]
       {:status 200 :body (json/write-str state-level-data)})
     (catch Exception e
       (log/error "Exception: " e)
@@ -59,39 +46,24 @@
                 ::actual-percent-enrolled
                 ::guessed-percent-enrolled]))
 
-(def ds (jdbc/get-datasource {:dbtype "mysql" :dbname "gback" :user "username" :password "password"}))
-
-(def insert-guess-query
-  "INSERT INTO Guesses(state, actual_percent_enrolled, guessed_percent_enrolled)
-  VALUES (?,?,?)")
-
-(def guess-results-query
-  "SELECT CAST(ROUND(AVG(ABS(actual_percent_enrolled - guessed_percent_enrolled)), 0) AS SIGNED) as Average_Difference
-  FROM Guesses
-  WHERE state = ?")
-
-; TODO - test
-(defn post-guess
+(defn handle-post-guess
   "Insert guess and return stats for related guesses"
   [guess]
   {:pre [(s/conform ::guess guess)]}
   (try
-    (with-open [conn (jdbc/get-connection ds)]
-      (let [{:keys [state actual-percent-enrolled guessed-percent-enrolled]} guess
-            _ (jdbc/execute-one! conn [insert-guess-query state actual-percent-enrolled guessed-percent-enrolled])
-            guess-results (jdbc/execute-one! conn [guess-results-query state] {:builder-fn rs/as-unqualified-lower-maps})]
-        {:status 201 :body (json/write-str guess-results)}))
+    (let [results (db/post-guess guess)]
+      {:status 201 :body (json/write-str results)})
     (catch Exception e
       (log/error "Exception: " e)
       {:status 500 :body "Unhandled Exception"})))
 
+; TODO - fold into middleware
 (def ^:private headers
   {"Access-Control-Allow-Origin"  "http://localhost:8281"
    "Access-Control-Allow-Headers" "*"
    "Access-Control-Allow-Methods" #{"GET" "POST"}
    "Content-Type" "application/json"})
 
-; TODO - reitit / muuntaja
 (defn- wrap-headers
   [handler]
   (fn [request]
@@ -104,18 +76,15 @@
    ["/api"
     ["/1"
      ["/marketplace"
-      {:get {:handler (wrap-headers get-marketplace-data)}}]
+      {:get {:handler (wrap-headers handle-get-marketplace-data)}}]
      ["/guess"
       {:options {:handler (wrap-headers (fn [_] {:status 200}))}
        :post {:parameters {:body {:state string? :actual-percent-enrolled int? :guessed-percent-enrolled int?}}
               :handler (wrap-headers (fn [{:keys [body-params]}]
-                                       (post-guess body-params)))}}]]]])
+                                       (handle-post-guess body-params)))}}]]]])
 
 (def middleware
-  {;:reitit.interceptor/transform dev/print-context-diffs ;; pretty context diffs
-   ;;:validate spec/validate ;; enable spec validation for route data
-   ;;:reitit.spec/wrap spell/closed ;; strict top-level validation
-   :data {:coercion     reitit.coercion.spec/coercion
+  {:data {:coercion     reitit.coercion.spec/coercion
           :muuntaja     m/instance
           :middleware [muuntaja/format-middleware
                        coercion/coerce-exceptions-middleware
@@ -124,12 +93,12 @@
 
 (def app
   (ring/ring-handler
-    (ring/router
-      routes
-      middleware)
-    (ring/routes
-      (ring/create-default-handler))
-    {:executor   sieppari/executor}))
+   (ring/router
+    routes
+    middleware)
+   (ring/routes
+    (ring/create-default-handler))
+   {:executor   sieppari/executor}))
 
 (defn start []
   (jetty/run-jetty #'app {:port 3000, :join? false, :async true})

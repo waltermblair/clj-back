@@ -15,5 +15,6 @@
                  [ring/ring-jetty-adapter "1.7.1"]
                  [ring-cors "0.1.13"]]
   :profiles {:dev {:plugins [[lein-auto "0.1.3"]]}
-             :test {:dependencies [[ring/ring-mock "0.4.0"]]}}
+             :test {:dependencies [[circleci/bond "0.6.0"]
+                                   [ring/ring-mock "0.4.0"]]}}
   :repl-options {:init-ns gback.core})
