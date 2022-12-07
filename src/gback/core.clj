@@ -1,5 +1,6 @@
 (ns gback.core
   (:require [clj-http.client :as client]
+            [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]
             [dk.ative.docjure.spreadsheet :as doc]
@@ -18,38 +19,41 @@
       (doc/load-workbook xin))))
 
 (defn- calculate-percentage
-  [{:keys [enrolled total]}]
-  (format "%.2f" (* 100 (float (/ enrolled total)))))
+  [{:keys [enrolled eligible]}]
+  (format "%.2f" (* 100 (float (/ enrolled eligible)))))
 
 (defn- load-state-level-data
   "Selects columns of interest from workbook"
   [workbook]
   (->> workbook
        (doc/select-sheet "State Level Tables From Report")
-       (doc/select-columns {:B :state :E :total :H :enrolled})
-       (remove #(or (= "StateName" (:state %)) (nil? (:state %))))
+       (doc/select-columns {:B :state :E :eligible :H :enrolled})
+       (remove #(or
+                  (= "SBM Subtotal" (:state %))
+                  (= "StateName" (:state %))
+                  (nil? (:state %))))
        (map #(assoc % :enrolled-percentage (calculate-percentage %)))))
 
 (defn get-marketplace-data
   [_]
   (try
     (let [state-level-data (load-state-level-data (fetch-workbook))]
-      {:status 200 :body state-level-data})
+      {:status 200 :body (json/write-str state-level-data)})
     (catch Exception e
       (log/error "Exception: " e)
       {:status 500 :body "Unhandled Exception"})))
 
-(def ^:private cors-headers
-  "Generic CORS headers"
-  {"Access-Control-Allow-Origin"  "*"
+(def ^:private headers
+  {"Access-Control-Allow-Origin"  "http://localhost:8281"
    "Access-Control-Allow-Headers" "*"
-   "Access-Control-Allow-Methods" "GET"})
+   "Access-Control-Allow-Methods" "GET"
+   "Content-Type" "application/json"})
 
-(defn- wrap-cors
+(defn- wrap-headers
   [handler]
   (fn [request]
     (let [response (handler request)]
-      (update-in response [:headers] merge cors-headers))))
+      (update-in response [:headers] merge headers))))
 
 (def routes
   [["/health"
@@ -57,7 +61,7 @@
    ["/api"
     ["/1"
      ["/marketplace"
-      {:get {:handler (wrap-cors get-marketplace-data)}}]]]])
+      {:get {:handler (wrap-headers get-marketplace-data)}}]]]])
 
 (def app
   (http/ring-handler
