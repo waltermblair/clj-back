@@ -8,6 +8,7 @@
             [dk.ative.docjure.spreadsheet :as doc]
             [muuntaja.core :as m]
             [next.jdbc :as jdbc]
+            [next.jdbc.result-set :as rs]
             [reitit.coercion.spec]
             [reitit.ring.coercion :as coercion]
             [reitit.ring.middleware.muuntaja :as muuntaja]
@@ -64,16 +65,22 @@
   "INSERT INTO Guesses(state, actual_percent_enrolled, guessed_percent_enrolled)
   VALUES (?,?,?)")
 
+(def guess-results-query
+  "SELECT CAST(ROUND(AVG(ABS(actual_percent_enrolled - guessed_percent_enrolled)), 0) AS SIGNED) as Average_Difference
+  FROM Guesses
+  WHERE state = ?")
+
 ; TODO - test
 (defn post-guess
+  "Insert guess and return stats for related guesses"
   [guess]
   {:pre [(s/conform ::guess guess)]}
   (try
-    {:status 201 :body (json/write-str "ok")}
-    (let [{:keys [state actual-percent-enrolled guessed-percent-enrolled]} guess
-          result (jdbc/execute-one! ds [insert-guess-query state actual-percent-enrolled guessed-percent-enrolled])
-          _ (println "HERE BE RESULT: " result)]
-      {:status 201 :body (json/write-str result)})
+    (with-open [conn (jdbc/get-connection ds)]
+      (let [{:keys [state actual-percent-enrolled guessed-percent-enrolled]} guess
+            _ (jdbc/execute-one! conn [insert-guess-query state actual-percent-enrolled guessed-percent-enrolled])
+            guess-results (jdbc/execute-one! conn [guess-results-query state] {:builder-fn rs/as-unqualified-lower-maps})]
+        {:status 201 :body (json/write-str guess-results)}))
     (catch Exception e
       (log/error "Exception: " e)
       {:status 500 :body "Unhandled Exception"})))
