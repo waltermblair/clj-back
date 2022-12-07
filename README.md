@@ -10,14 +10,14 @@ lein test
 
 ```
 docker-compose up
-lein run
+curl localhost:3000/health
 ```
 
 ## Todo
 
-- batch guesses
 - UI tests
 - UI styling
 - users
 - flyway
 - docker front-end
+- backend healthcheck

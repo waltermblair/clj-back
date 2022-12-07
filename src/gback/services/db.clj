@@ -1,8 +1,11 @@
 (ns gback.services.db
   (:require [next.jdbc :as jdbc]
-            [next.jdbc.result-set :as rs]))
+            [next.jdbc.result-set :as rs]
+            [environ.core :refer [env]]))
 
-(def ds (jdbc/get-datasource {:dbtype "mysql" :dbname "gback" :user "username" :password "password"}))
+(def ds (jdbc/get-datasource (cond-> {:dbtype "mysql" :dbname "gback" :user "username" :password "password"}
+                               (:db-host env)
+                               (merge {:host (:db-host env)}))))
 
 (def insert-guess-query
   "INSERT INTO Guesses(state, actual_percent_enrolled, guessed_percent_enrolled)
