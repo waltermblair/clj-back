@@ -4,11 +4,14 @@ Web server demo
 
 ## Usage
 
+docker-compose up
 lein run
 
 ## Todo
 
+batch guesses
+UI styling
 refactor ns
 docs
-tests
-docker-compose MySQL
+UI tests
+docker-compose apps too
